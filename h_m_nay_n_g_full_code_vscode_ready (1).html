@@ -1,0 +1,1846 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hôm Nay Ăn Gì? - Vòng Quay Lựa Chọn Món Ăn Thông Minh</title>
+
+    <!-- Polyfill for Node crypto / WebCrypto on Zalo In-App Browser -->
+    <script>
+        if (typeof window !== 'undefined') {
+            window.crypto = window.crypto || {};
+            if (!window.crypto.createHash) {
+                window.crypto.createHash = function() {
+                    return {
+                        update: function() { return this; },
+                        digest: function() { return 'hash_' + Math.random().toString(36).substring(2); }
+                    };
+                };
+            }
+        }
+    </script>
+
+    <!-- Tailwind CSS CDN (Fixed stable version to prevent createHash crash) -->
+    <script src="https://cdn.tailwindcss.com/3.4.5"></script>
+    <!-- Google Fonts: Be Vietnam Pro -->
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Canvas Confetti Library -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    
+    <script>
+        // Detection guard for Zalo / In-App Browsers
+        window.isZaloBrowser = /Zalo/i.test(navigator.userAgent || '');
+        
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        cream: '#FFFDF9',
+                        plum: '#FF1744',
+                        brightred: '#FF1744',
+                        coral: '#E63946',
+                        charcoal: '#121212',
+                        darkbg: '#1E1E1E',
+                        butter: '#F5C85B',
+                        forest: '#2A9D8F',
+                        emerald: '#10B981',
+                        'cream-dark': '#F4F1EA'
+                    },
+                    fontFamily: {
+                        sans: ['"Be Vietnam Pro"', 'sans-serif'],
+                    },
+                    boxShadow: {
+                        'soft': '0 10px 25px -5px rgba(255, 23, 68, 0.1), 0 8px 10px -6px rgba(18, 18, 18, 0.05)',
+                        'glow': '0 0 25px rgba(255, 23, 68, 0.4)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #FFFDF9;
+            color: #121212;
+            font-family: 'Be Vietnam Pro', sans-serif;
+            overflow-x: hidden;
+        }
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #FFFDF9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #FF1744;
+            border-radius: 9999px;
+        }
+        .wheel-container {
+            position: relative;
+            user-select: none;
+        }
+        /* Glassmorphic elements */
+        .glass-card {
+            background: rgba(255, 253, 249, 0.9);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(18, 18, 18, 0.1);
+        }
+        /* Pointer animation */
+        @keyframes pulse-pointer {
+            0%, 100% { transform: translateY(0) scale(1); }
+            50% { transform: translateY(-4px) scale(1.05); }
+        }
+        .pointer-bounce {
+            animation: pulse-pointer 1.5s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between selection:bg-brightred selection:text-white">
+
+    <!-- HEADER / NAVIGATION -->
+    <header class="sticky top-0 z-40 glass-card border-b border-charcoal/10 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-20">
+                
+                <!-- Logo -->
+                <div class="flex items-center gap-3 cursor-pointer" onclick="switchView('home')">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-charcoal via-brightred to-forest flex items-center justify-center text-white text-2xl shadow-md transform hover:rotate-6 transition-transform">
+                        <i class="fa-solid fa-utensils text-butter"></i>
+                    </div>
+                    <div>
+                        <span class="text-xl sm:text-2xl font-extrabold text-charcoal tracking-tight block">Hôm Nay <span class="text-brightred">Ăn Gì?</span></span>
+                        <span class="text-xs font-bold text-forest block -mt-1"><i class="fa-solid fa-leaf mr-1"></i>Gợi Ý Món Ăn Thông Minh</span>
+                    </div>
+                </div>
+
+                <!-- Nav Menu Desktop -->
+                <nav class="hidden md:flex items-center gap-1 lg:gap-2">
+                    <button onclick="switchView('home')" class="nav-btn px-4 py-2.5 rounded-xl font-bold text-sm text-charcoal hover:text-brightred hover:bg-brightred/5 transition-all flex items-center gap-2">
+                        <i class="fa-solid fa-house"></i> Trang chủ
+                    </button>
+                    <button onclick="switchView('categories')" class="nav-btn px-4 py-2.5 rounded-xl font-bold text-sm text-charcoal hover:text-brightred hover:bg-brightred/5 transition-all flex items-center gap-2">
+                        <i class="fa-solid fa-compass"></i> Khám phá
+                    </button>
+                    <button onclick="openFavoritesModal()" class="px-4 py-2.5 rounded-xl font-bold text-sm text-charcoal hover:text-brightred hover:bg-brightred/5 transition-all flex items-center gap-2 relative">
+                        <i class="fa-solid fa-heart text-brightred"></i> Yêu thích
+                        <span id="fav-count-badge" class="ml-1 bg-brightred text-white text-xs px-2 py-0.5 rounded-full font-bold">0</span>
+                    </button>
+                    <button onclick="openHistoryModal()" class="px-4 py-2.5 rounded-xl font-bold text-sm text-charcoal hover:text-brightred hover:bg-brightred/5 transition-all flex items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left"></i> Lịch sử
+                    </button>
+                </nav>
+
+                <!-- Action Controls -->
+                <div class="flex items-center gap-2 sm:gap-3">
+                    <!-- Sound Toggle Button -->
+                <button id="sound-toggle-btn" onclick="toggleSound()" class="w-11 h-11 rounded-xl bg-cream-dark hover:bg-butter/40 text-charcoal flex items-center justify-center transition-all shadow-sm border border-charcoal/10" title="Bật/Tắt âm thanh">
+                    <i id="sound-icon" class="fa-solid fa-volume-high text-lg"></i>
+                </button>
+                
+                <!-- Quick Add Dish Button -->
+                <button onclick="openManageDishesModal()" class="px-4 py-2.5 rounded-xl bg-charcoal hover:bg-darkbg text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-brightred/40">
+                    <i class="fa-solid fa-plus text-brightred"></i> <span class="hidden sm:inline">Thêm món</span>
+                </button>
+
+                <!-- Mobile Menu Button -->
+                <button onclick="toggleMobileMenu()" class="md:hidden w-11 h-11 rounded-xl bg-cream-dark text-charcoal flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Zalo In-App Browser Warning Banner -->
+        <div id="zalo-banner" class="hidden bg-butter/90 text-charcoal px-4 py-2 text-xs font-bold text-center flex items-center justify-center gap-2 border-b border-charcoal/10">
+            <span>⚠️ Bạn đang mở qua Zalo. Nếu gặp lỗi âm thanh hay hình ảnh, hãy bấm <b>•••</b> ở góc trên bên phải và chọn <b>"Mở bằng trình duyệt"</b> (Chrome/Safari).</span>
+            <button onclick="document.getElementById('zalo-banner').remove()" class="ml-2 font-black text-brightred">✕</button>
+        </div>
+
+        <!-- Mobile Navigation Menu -->
+        <div id="mobile-menu" class="hidden md:hidden border-t border-coral/10 bg-cream/95 px-4 pt-3 pb-5 space-y-2">
+            <button onclick="switchView('home'); toggleMobileMenu()" class="w-full text-left px-4 py-3 rounded-xl font-semibold text-charcoal hover:bg-coral/10 flex items-center gap-3">
+                <i class="fa-solid fa-house text-coral"></i> Trang chủ
+            </button>
+            <button onclick="switchView('categories'); toggleMobileMenu()" class="w-full text-left px-4 py-3 rounded-xl font-semibold text-charcoal hover:bg-coral/10 flex items-center gap-3">
+                <i class="fa-solid fa-compass text-coral"></i> Khám phá danh mục
+            </button>
+            <button onclick="openFavoritesModal(); toggleMobileMenu()" class="w-full text-left px-4 py-3 rounded-xl font-semibold text-charcoal hover:bg-coral/10 flex items-center gap-3">
+                <i class="fa-solid fa-heart text-coral"></i> Món yêu thích
+            </button>
+            <button onclick="openHistoryModal(); toggleMobileMenu()" class="w-full text-left px-4 py-3 rounded-xl font-semibold text-charcoal hover:bg-coral/10 flex items-center gap-3">
+                <i class="fa-solid fa-clock-rotate-left text-coral"></i> Lịch sử đã quay
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN CONTAINER -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+        <!-- VIEW 1: HOME LANDING HERO -->
+        <section id="view-home" class="space-y-12 transition-opacity duration-300">
+            <!-- Hero Section -->
+            <div class="relative overflow-hidden rounded-3xl bg-gradient-to-r from-charcoal via-darkbg to-brightred p-8 sm:p-12 text-white shadow-xl border border-charcoal">
+                <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-forest/30 rounded-full blur-3xl pointer-events-none"></div>
+                <div class="relative z-10 max-w-2xl space-y-6">
+                    <span class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-forest text-white text-xs font-extrabold uppercase tracking-wider shadow-md">
+                        <i class="fa-solid fa-wand-magic-sparkles text-butter"></i> Giải pháp cứu rỗi bụng đói
+                    </span>
+                    <h1 class="text-3xl sm:text-5xl font-black leading-tight tracking-tight">
+                        Trưa nay ăn gì? Tối nay ăn gì?<br/>
+                        <span class="text-butter italic">Đừng suy nghĩ nữa!</span>
+                    </h1>
+                    <p class="text-white/90 text-base sm:text-lg leading-relaxed font-normal">
+                        Xóa bỏ nỗi ám ảnh phân vân kéo dài mỗi ngày. Quay vòng may mắn ngay để có câu trả lời ngon lành kèm ảnh thực tế nhé!
+                    </p>
+                    <div class="flex flex-wrap gap-4 pt-2">
+                        <button onclick="quickStartSpin()" class="px-7 py-4 rounded-2xl bg-brightred text-white font-extrabold text-base shadow-lg hover:bg-red-600 hover:scale-105 transition-all flex items-center gap-3 border border-butter/50">
+                            <i class="fa-solid fa-arrows-spin text-xl text-butter"></i> Quay ngẫu nhiên ngay!
+                        </button>
+                        <button onclick="switchView('categories')" class="px-7 py-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-base backdrop-blur-md border border-white/20 transition-all flex items-center gap-2">
+                            <i class="fa-solid fa-layer-group text-forest"></i> Chọn theo nhu cầu
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Categories Selection Cards -->
+            <div class="space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-2xl font-bold text-brightred">Phong cách ăn uống</h2>
+                        <p class="text-charcoal/70 text-sm">Lựa chọn gu ẩm thực phù hợp với tâm trạng của bạn hôm nay</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
+                    
+                    <!-- Category 1: Healthy -->
+                    <div onclick="selectCategory('healthy')" class="group cursor-pointer bg-white rounded-2xl p-6 border-2 border-forest/20 shadow-soft hover:shadow-xl hover:-translate-y-1.5 transition-all relative overflow-hidden">
+                        <div class="w-14 h-14 rounded-xl bg-forest/20 text-forest flex items-center justify-center text-2xl font-bold mb-4 group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-leaf"></i>
+                        </div>
+                        <h3 class="text-lg font-extrabold text-charcoal group-hover:text-forest transition-colors">Ăn Healthy</h3>
+                        <p class="text-xs text-charcoal/70 mt-2 leading-relaxed">Nhẹ nhàng, cân bằng, dồi dào dưỡng chất và năng lượng xanh.</p>
+                        <div class="mt-4 flex items-center text-xs font-bold text-forest">
+                            Khám phá <i class="fa-solid fa-chevron-right ml-1 text-[10px]"></i>
+                        </div>
+                    </div>
+
+                    <!-- Category 2: Cơm Nhà -->
+                    <div onclick="selectCategory('home')" class="group cursor-pointer bg-white rounded-2xl p-6 border-2 border-brightred/20 shadow-soft hover:shadow-xl hover:-translate-y-1.5 transition-all relative overflow-hidden">
+                        <div class="w-14 h-14 rounded-xl bg-brightred/15 text-brightred flex items-center justify-center text-2xl font-bold mb-4 group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-house-chimney-user"></i>
+                        </div>
+                        <h3 class="text-lg font-extrabold text-charcoal group-hover:text-brightred transition-colors">Ăn Cơm Nhà</h3>
+                        <p class="text-xs text-charcoal/70 mt-2 leading-relaxed">Những món quen thuộc, đậm đà vị ấm áp như chính tay nhà nấu.</p>
+                        <div class="mt-4 flex items-center text-xs font-bold text-brightred">
+                            Khám phá <i class="fa-solid fa-chevron-right ml-1 text-[10px]"></i>
+                        </div>
+                    </div>
+
+                    <!-- Category 3: Ăn Nhanh -->
+                    <div onclick="selectCategory('fast')" class="group cursor-pointer bg-white rounded-2xl p-6 border-2 border-charcoal/20 shadow-soft hover:shadow-xl hover:-translate-y-1.5 transition-all relative overflow-hidden">
+                        <div class="w-14 h-14 rounded-xl bg-charcoal text-white flex items-center justify-center text-2xl font-bold mb-4 group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-burger text-butter"></i>
+                        </div>
+                        <h3 class="text-lg font-extrabold text-charcoal group-hover:text-brightred transition-colors">Ăn Nhanh</h3>
+                        <p class="text-xs text-charcoal/70 mt-2 leading-relaxed">Gọn lẹ, tiện lợi, siêu tốc cho những ngày bận rộn nhiều công việc.</p>
+                        <div class="mt-4 flex items-center text-xs font-bold text-charcoal">
+                            Khám phá <i class="fa-solid fa-chevron-right ml-1 text-[10px]"></i>
+                        </div>
+                    </div>
+
+                    <!-- Category 4: Ăn Chay -->
+                    <div onclick="selectCategory('vegan')" class="group cursor-pointer bg-white rounded-2xl p-6 border-2 border-emerald/20 shadow-soft hover:shadow-xl hover:-translate-y-1.5 transition-all relative overflow-hidden">
+                        <div class="w-14 h-14 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-2xl font-bold mb-4 group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-seedling"></i>
+                        </div>
+                        <h3 class="text-lg font-extrabold text-charcoal group-hover:text-emerald-700 transition-colors">Ăn Chay</h3>
+                        <p class="text-xs text-charcoal/70 mt-2 leading-relaxed">Món chay thanh đạm, thuần tự nhiên, đổi vị đa dạng và an lành.</p>
+                        <div class="mt-4 flex items-center text-xs font-bold text-emerald-700">
+                            Khám phá <i class="fa-solid fa-chevron-right ml-1 text-[10px]"></i>
+                        </div>
+                    </div>
+
+                    <!-- Category 5: Đồ Uống -->
+                    <div onclick="selectCategory('drinks')" class="group cursor-pointer bg-white rounded-2xl p-6 border-2 border-butter/60 shadow-soft hover:shadow-xl hover:-translate-y-1.5 transition-all relative overflow-hidden">
+                        <div class="w-14 h-14 rounded-xl bg-butter/40 text-amber-800 flex items-center justify-center text-2xl font-bold mb-4 group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-mug-hot"></i>
+                        </div>
+                        <h3 class="text-lg font-extrabold text-charcoal group-hover:text-amber-800 transition-colors">Đồ Uống</h3>
+                        <p class="text-xs text-charcoal/70 mt-2 leading-relaxed">Trà, cà phê, nước ép & trà sữa giúp bạn tỉnh táo và giải khát tức thì.</p>
+                        <div class="mt-4 flex items-center text-xs font-bold text-amber-800">
+                            Khám phá <i class="fa-solid fa-chevron-right ml-1 text-[10px]"></i>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 2: MEAL SELECTION -->
+        <section id="view-meals" class="hidden space-y-8">
+            <div class="flex items-center gap-4">
+                <button onclick="switchView('home')" class="w-10 h-10 rounded-xl bg-white border border-brightred/10 text-charcoal hover:bg-brightred hover:text-white transition-all flex items-center justify-center shadow-sm">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <div>
+                    <h2 id="selected-cat-title" class="text-2xl sm:text-3xl font-extrabold text-brightred">Ăn Healthy</h2>
+                    <p class="text-xs sm:text-sm text-charcoal/70">Vui lòng chọn thời điểm hoặc bữa ăn trong ngày của bạn</p>
+                </div>
+            </div>
+
+            <!-- Meal Cards Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Sáng -->
+                <div onclick="selectMeal('breakfast')" class="group cursor-pointer bg-white rounded-3xl p-6 border-2 border-transparent hover:border-coral shadow-soft hover:shadow-xl transition-all text-center space-y-4">
+                    <div class="w-20 h-20 mx-auto rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-3xl font-bold group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-sun"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-charcoal">Bữa Sáng</h3>
+                        <p class="text-xs text-charcoal/60 mt-1">Nạp năng lượng khởi đầu ngày mới</p>
+                    </div>
+                    <span class="inline-block px-4 py-1.5 rounded-full bg-coral/10 text-coral text-xs font-bold group-hover:bg-coral group-hover:text-white transition-all">
+                        Chọn Bữa Sáng
+                    </span>
+                </div>
+
+                <!-- Trưa -->
+                <div onclick="selectMeal('lunch')" class="group cursor-pointer bg-white rounded-3xl p-6 border-2 border-transparent hover:border-coral shadow-soft hover:shadow-xl transition-all text-center space-y-4">
+                    <div class="w-20 h-20 mx-auto rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-3xl font-bold group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-cloud-sun"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-charcoal">Bữa Trưa</h3>
+                        <p class="text-xs text-charcoal/60 mt-1">Bữa ăn chính ấm bụng và no lâu</p>
+                    </div>
+                    <span class="inline-block px-4 py-1.5 rounded-full bg-coral/10 text-coral text-xs font-bold group-hover:bg-coral group-hover:text-white transition-all">
+                        Chọn Bữa Trưa
+                    </span>
+                </div>
+
+                <!-- Tối -->
+                <div onclick="selectMeal('dinner')" class="group cursor-pointer bg-white rounded-3xl p-6 border-2 border-transparent hover:border-coral shadow-soft hover:shadow-xl transition-all text-center space-y-4">
+                    <div class="w-20 h-20 mx-auto rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-3xl font-bold group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-moon"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-charcoal">Bữa Tối</h3>
+                        <p class="text-xs text-charcoal/60 mt-1">Thư giãn cuối ngày bên món ăn ngon</p>
+                    </div>
+                    <span class="inline-block px-4 py-1.5 rounded-full bg-coral/10 text-coral text-xs font-bold group-hover:bg-coral group-hover:text-white transition-all">
+                        Chọn Bữa Tối
+                    </span>
+                </div>
+
+                <!-- Ăn Vặt -->
+                <div onclick="selectMeal('snack')" class="group cursor-pointer bg-white rounded-3xl p-6 border-2 border-transparent hover:border-coral shadow-soft hover:shadow-xl transition-all text-center space-y-4">
+                    <div class="w-20 h-20 mx-auto rounded-full bg-pink-100 text-pink-600 flex items-center justify-center text-3xl font-bold group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-cookie-bite"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-charcoal">Ăn Vặt / Nhẹ</h3>
+                        <p class="text-xs text-charcoal/60 mt-1">Nhanh gọn vui miệng giữa giờ</p>
+                    </div>
+                    <span class="inline-block px-4 py-1.5 rounded-full bg-coral/10 text-coral text-xs font-bold group-hover:bg-coral group-hover:text-white transition-all">
+                        Chọn Ăn Vặt
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 3: LUCKY WHEEL ARENA -->
+        <section id="view-wheel" class="hidden space-y-8">
+            <!-- Header bar for Wheel -->
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl shadow-sm border border-charcoal/10">
+                <div class="flex items-center gap-3">
+                    <button onclick="goBackFromWheel()" class="w-10 h-10 rounded-xl bg-cream-dark text-charcoal hover:bg-charcoal hover:text-white transition-all flex items-center justify-center">
+                        <i class="fa-solid fa-arrow-left"></i>
+                    </button>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span id="active-cat-badge" class="px-2.5 py-0.5 rounded-md bg-charcoal text-white text-xs font-bold">Healthy</span>
+                            <span id="active-meal-badge" class="px-2.5 py-0.5 rounded-md bg-brightred text-white text-xs font-bold">Bữa Trưa</span>
+                        </div>
+                        <h2 id="wheel-title-text" class="text-xl font-extrabold text-charcoal mt-0.5">Vòng Quay Món Healthy Bữa Trưa</h2>
+                    </div>
+                </div>
+
+                <!-- Options & Controls -->
+                <div class="flex flex-wrap items-center gap-3">
+                    <button onclick="openManageDishesModal()" class="text-xs font-bold px-3.5 py-2 rounded-xl bg-forest/15 text-forest hover:bg-forest hover:text-white transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-pen-to-square"></i> Quản lý danh sách (<span id="wheel-dish-count">0</span> món)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main Canvas Wheel Container -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+                
+                <!-- Wheel Left Column -->
+                <div class="lg:col-span-7 flex flex-col items-center justify-center">
+                    <div class="wheel-container relative w-full max-w-[420px] sm:max-w-[480px] aspect-square flex items-center justify-center p-2">
+                        
+                        <!-- Outer Glow Frame -->
+                        <div class="absolute inset-0 rounded-full border-8 border-white shadow-2xl bg-gradient-to-tr from-charcoal/30 via-brightred/20 to-forest/30 backdrop-blur-sm pointer-events-none"></div>
+
+                        <!-- Canvas element for spinning wheel -->
+                        <canvas id="wheel-canvas" width="500" height="500" class="w-full h-full rounded-full shadow-inner"></canvas>
+
+                        <!-- Center Pointer Arrow -->
+                        <div class="absolute top-2 left-1/2 -translate-x-1/2 z-20 pointer-events-none pointer-bounce drop-shadow-md">
+                            <div class="w-0 h-0 border-l-[16px] border-l-transparent border-r-[16px] border-r-transparent border-t-[32px] border-t-brightred"></div>
+                        </div>
+
+                        <!-- Center Spin Button -->
+                        <button id="spin-btn" onclick="startWheelSpin()" class="absolute z-30 w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-gradient-to-br from-brightred via-charcoal to-darkbg text-white font-black text-sm sm:text-base tracking-wider uppercase shadow-xl hover:scale-105 active:scale-95 transition-all border-4 border-white flex flex-col items-center justify-center gap-1 group">
+                            <i class="fa-solid fa-play text-butter text-xl sm:text-2xl group-hover:scale-125 transition-transform"></i>
+                            <span>QUAY NGAY</span>
+                        </button>
+                    </div>
+
+                    <!-- Actions Bar Below Wheel -->
+                    <div class="mt-6 flex flex-wrap justify-center gap-3">
+                        <button onclick="startWheelSpin()" class="px-5 py-2.5 rounded-xl bg-brightred hover:bg-red-600 text-white font-bold text-sm shadow-md transition-all flex items-center gap-2">
+                            <i class="fa-solid fa-rotate-right"></i> Quay lại lần nữa
+                        </button>
+                        <button onclick="pickRandomDirectly()" class="px-5 py-2.5 rounded-xl bg-charcoal hover:bg-darkbg text-white font-bold text-sm shadow-sm transition-all flex items-center gap-2">
+                            <i class="fa-solid fa-shuffle text-butter"></i> Chọn ngẫu nhiên nhanh
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Wheel Right Column: Dish List & Notes Preview -->
+                <div class="lg:col-span-5 space-y-6">
+                    <div class="bg-white p-6 rounded-3xl shadow-soft border border-charcoal/10 space-y-4">
+                        <div class="flex items-center justify-between border-b border-charcoal/10 pb-3">
+                            <h3 class="font-extrabold text-charcoal text-base flex items-center gap-2">
+                                <i class="fa-solid fa-list-check text-brightred"></i> Món Trong Vòng Quay
+                            </h3>
+                            <span class="text-xs font-bold px-2.5 py-1 bg-cream-dark text-charcoal rounded-lg" id="side-list-count">0 món</span>
+                        </div>
+                        
+                        <div class="relative">
+                            <input type="text" id="wheel-list-search" oninput="filterWheelListPreview()" placeholder="Tìm món trong danh mục..." class="w-full pl-9 pr-4 py-2 rounded-xl border border-charcoal/20 text-xs outline-none focus:ring-2 focus:ring-brightred">
+                            <i class="fa-solid fa-search absolute left-3 top-2.5 text-charcoal/40 text-xs"></i>
+                        </div>
+
+                        <div id="wheel-dishes-preview" class="space-y-2 max-h-72 overflow-y-auto pr-1">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 4: CATEGORIES EXPLORER -->
+        <section id="view-categories" class="hidden space-y-8">
+            <div class="text-center max-w-2xl mx-auto space-y-3">
+                <h2 class="text-3xl font-extrabold text-charcoal">Khám Phá Tất Cả Danh Mục</h2>
+                <p class="text-charcoal/70 text-sm">Chọn danh mục và bữa ăn phù hợp với khẩu vị của bạn hôm nay</p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div onclick="selectCategory('healthy')" class="cursor-pointer bg-white rounded-3xl p-6 border-2 border-forest/20 shadow-soft hover:shadow-xl hover:-translate-y-1 transition-all space-y-3">
+                    <div class="w-12 h-12 rounded-xl bg-forest/20 text-forest flex items-center justify-center text-xl font-bold">
+                        <i class="fa-solid fa-leaf"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-charcoal">Ăn Healthy</h3>
+                    <p class="text-xs text-charcoal/60 leading-relaxed">Nhẹ nhàng, cân bằng, dồi dào dưỡng chất và năng lượng xanh.</p>
+                </div>
+
+                <div onclick="selectCategory('home')" class="cursor-pointer bg-white rounded-3xl p-6 border-2 border-brightred/20 shadow-soft hover:shadow-xl hover:-translate-y-1 transition-all space-y-3">
+                    <div class="w-12 h-12 rounded-xl bg-brightred/15 text-brightred flex items-center justify-center text-xl font-bold">
+                        <i class="fa-solid fa-house-chimney-user"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-charcoal">Ăn Cơm Nhà</h3>
+                    <p class="text-xs text-charcoal/60 leading-relaxed">Những món quen thuộc, đậm đà vị ấm áp như chính tay nhà nấu.</p>
+                </div>
+
+                <div onclick="selectCategory('fast')" class="cursor-pointer bg-white rounded-3xl p-6 border-2 border-charcoal/20 shadow-soft hover:shadow-xl hover:-translate-y-1 transition-all space-y-3">
+                    <div class="w-12 h-12 rounded-xl bg-charcoal text-white flex items-center justify-center text-xl font-bold">
+                        <i class="fa-solid fa-burger text-butter"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-charcoal">Ăn Nhanh</h3>
+                    <p class="text-xs text-charcoal/60 leading-relaxed">Gọn lẹ, tiện lợi, siêu tốc cho những ngày bận rộn nhiều công việc.</p>
+                </div>
+
+                <div onclick="selectCategory('vegan')" class="cursor-pointer bg-white rounded-3xl p-6 border-2 border-emerald/20 shadow-soft hover:shadow-xl hover:-translate-y-1 transition-all space-y-3">
+                    <div class="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-xl font-bold">
+                        <i class="fa-solid fa-seedling"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-charcoal">Ăn Chay</h3>
+                    <p class="text-xs text-charcoal/60 leading-relaxed">Món chay thanh đạm, thuần tự nhiên, đổi vị đa dạng và an lành.</p>
+                </div>
+
+                <div onclick="selectCategory('drinks')" class="cursor-pointer bg-white rounded-3xl p-6 border-2 border-butter/60 shadow-soft hover:shadow-xl hover:-translate-y-1 transition-all space-y-3">
+                    <div class="w-12 h-12 rounded-xl bg-butter/40 text-amber-800 flex items-center justify-center text-xl font-bold">
+                        <i class="fa-solid fa-mug-hot"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-charcoal">Đồ Uống</h3>
+                    <p class="text-xs text-charcoal/60 leading-relaxed">Trà, cà phê, nước ép & trà sữa giúp bạn tỉnh táo và giải khát tức thì.</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="bg-charcoal text-white border-t border-charcoal mt-16 py-8">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-brightred flex items-center justify-center text-white font-bold">
+                    <i class="fa-solid fa-utensils text-butter"></i>
+                </div>
+                <span class="font-extrabold text-base tracking-tight">Hôm Nay <span class="text-brightred">Ăn Gì?</span></span>
+            </div>
+            <p class="text-xs text-white/60 text-center">
+                &copy; 2026 Hôm Nay Ăn Gì? - Ứng dụng gợi ý ẩm thực thông minh.
+            </p>
+        </div>
+    </footer>
+
+    <!-- RESULT WINNER MODAL WITH FOOD IMAGE -->
+    <div id="result-modal" class="fixed inset-0 z-50 hidden bg-charcoal/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl border-2 border-brightred/30 overflow-hidden transform transition-all scale-95 opacity-0 duration-200" id="result-card-box">
+            
+            <!-- Result Header Banner -->
+            <div class="bg-gradient-to-r from-charcoal via-darkbg to-brightred p-5 text-white text-center relative overflow-hidden">
+                <button onclick="closeResultModal()" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center text-white text-sm transition-all z-10">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+                <span class="inline-block px-3 py-1 bg-butter text-charcoal text-xs font-black uppercase tracking-wider rounded-full mb-1 shadow-sm">
+                    🎉 Gợi ý món ngon hôm nay!
+                </span>
+                <h2 id="result-dish-name" class="text-2xl sm:text-3xl font-black text-butter tracking-tight mt-1">Món Ăn Ngon</h2>
+            </div>
+
+            <!-- Dish Real Image Container -->
+            <div class="relative w-full h-52 sm:h-60 bg-cream-dark overflow-hidden group">
+                <img id="result-dish-image" src="" alt="Món ăn" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" onerror="handleImageError(this)">
+                <div class="absolute inset-0 bg-gradient-to-t from-charcoal/70 via-transparent to-transparent pointer-events-none"></div>
+                <div id="result-image-tag" class="absolute bottom-3 left-4 text-white text-xs font-bold flex items-center gap-2">
+                    <i class="fa-solid fa-camera text-butter"></i> Hình ảnh minh họa món ăn
+                </div>
+            </div>
+
+            <!-- Result Body Content -->
+            <div class="p-6 space-y-5 max-h-[50vh] overflow-y-auto">
+                
+                <!-- Category & Meal tags -->
+                <div class="flex flex-wrap items-center gap-2" id="result-tags-container">
+                    <!-- Populated via JS -->
+                </div>
+
+                <!-- Description -->
+                <div class="bg-cream-dark p-4 rounded-2xl border border-charcoal/10">
+                    <h4 class="text-xs font-bold text-charcoal uppercase tracking-wider mb-1">Mô tả món ăn</h4>
+                    <p id="result-dish-desc" class="text-sm text-charcoal/80 leading-relaxed">Mô tả chi tiết món ăn sẽ hiển thị tại đây.</p>
+                </div>
+
+                <!-- Location & Note Section -->
+                <div class="space-y-3 bg-white p-4 rounded-2xl border border-charcoal/10 shadow-sm">
+                    <div class="flex items-center justify-between">
+                        <h4 class="text-xs font-bold text-charcoal uppercase tracking-wider flex items-center gap-1.5">
+                            <i class="fa-solid fa-location-dot text-brightred"></i> Ghi chú & Địa điểm gợi ý
+                        </h4>
+                        <button onclick="toggleEditResultNotes()" class="text-xs text-brightred font-bold hover:underline">
+                            <i class="fa-solid fa-pen"></i> Chỉnh sửa
+                        </button>
+                    </div>
+
+                    <!-- Display Mode -->
+                    <div id="result-notes-view" class="space-y-2 text-xs">
+                        <div class="flex items-start gap-2">
+                            <span class="font-bold text-charcoal/60 min-w-[70px]">Quán/Nơi mua:</span>
+                            <span id="result-location-text" class="text-charcoal font-semibold">Chưa có địa điểm</span>
+                        </div>
+                        <div class="flex items-start gap-2">
+                            <span class="font-bold text-charcoal/60 min-w-[70px]">Ghi chú:</span>
+                            <span id="result-note-text" class="text-charcoal italic">Chưa có ghi chú riêng</span>
+                        </div>
+                    </div>
+
+                    <!-- Edit Mode -->
+                    <div id="result-notes-edit" class="hidden space-y-3 pt-2">
+                        <div>
+                            <label class="text-[11px] font-bold text-charcoal/70 block mb-1">Địa điểm / Quán quen</label>
+                            <input type="text" id="edit-res-location" class="w-full px-3 py-1.5 text-xs rounded-xl border border-charcoal/20 bg-cream focus:ring-2 focus:ring-brightred outline-none" placeholder="VD: Quán Bún Bò Cây Đa, Quận 1">
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-bold text-charcoal/70 block mb-1">Ghi chú cá nhân</label>
+                            <input type="text" id="edit-res-note" class="w-full px-3 py-1.5 text-xs rounded-xl border border-charcoal/20 bg-cream focus:ring-2 focus:ring-brightred outline-none" placeholder="VD: Ăn ít cay, mua trước 12h">
+                        </div>
+                        <button onclick="saveResultNotes()" class="w-full py-2 bg-brightred text-white text-xs font-bold rounded-xl shadow-sm hover:bg-red-600">
+                            Lưu Ghi Chú Món Này
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Action buttons -->
+                <div class="grid grid-cols-2 gap-3 pt-2">
+                    <button id="toggle-fav-btn" onclick="toggleFavoriteCurrentResult()" class="py-3 rounded-xl border-2 border-brightred text-brightred hover:bg-brightred/10 font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2">
+                        <i id="result-fav-icon" class="fa-regular fa-heart text-base"></i> <span id="result-fav-text">Lưu Yêu Thích</span>
+                    </button>
+                    <button onclick="closeResultModal(); startWheelSpin();" class="py-3 rounded-xl bg-charcoal hover:bg-darkbg text-white font-bold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-arrows-spin text-butter"></i> Quay Món Khác
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- MANAGE & ADD DISHES MODAL (CRUD) -->
+    <div id="manage-modal" class="fixed inset-0 z-50 hidden bg-charcoal/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-brightred/20 overflow-hidden flex flex-col max-h-[90vh]">
+            
+            <!-- Modal Header -->
+            <div class="bg-brightred p-5 text-white flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-butter text-charcoal flex items-center justify-center text-lg font-bold">
+                        <i class="fa-solid fa-utensils"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-extrabold text-lg">Quản Lý Danh Sách Món Ăn</h3>
+                        <p class="text-xs text-white/80">Thêm mới, chỉnh sửa hoặc cá nhân hóa món ăn</p>
+                    </div>
+                </div>
+                <button onclick="closeManageModal()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Tabs -->
+            <div class="flex border-b border-brightred/10 bg-cream-dark px-6 pt-3 gap-2">
+                <button id="tab-btn-add" onclick="switchManageTab('add')" class="px-4 py-2.5 rounded-t-xl font-bold text-xs bg-white text-brightred border-t border-x border-brightred/10">
+                    <i class="fa-solid fa-plus text-coral mr-1"></i> Thêm món mới
+                </button>
+                <button id="tab-btn-list" onclick="switchManageTab('list')" class="px-4 py-2.5 rounded-t-xl font-bold text-xs text-charcoal/70 hover:text-brightred">
+                    <i class="fa-solid fa-list mr-1"></i> Danh sách hiện tại (<span id="manage-total-count">0</span>)
+                </button>
+            </div>
+
+            <!-- Modal Content Body -->
+            <div class="p-6 overflow-y-auto flex-grow space-y-6">
+
+                <!-- TAB 1: ADD / EDIT FORM -->
+                <form id="dish-form" onsubmit="handleDishFormSubmit(event)" class="space-y-4">
+                    <input type="hidden" id="form-dish-id" value="">
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="sm:col-span-2">
+                            <label class="block text-xs font-bold text-brightred uppercase tracking-wider mb-1">Tên món ăn <span class="text-coral">*</span></label>
+                            <input type="text" id="form-dish-name" required class="w-full px-4 py-2.5 rounded-xl border border-brightred/20 text-sm focus:ring-2 focus:ring-coral outline-none" placeholder="VD: Bún Bò Huế Đặc Biệt">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-brightred uppercase tracking-wider mb-1">Phong cách / Danh mục</label>
+                            <select id="form-dish-category" class="w-full px-4 py-2.5 rounded-xl border border-brightred/20 text-sm focus:ring-2 focus:ring-coral outline-none bg-white">
+                                <option value="healthy">Ăn Healthy</option>
+                                <option value="home">Ăn Cơm Nhà</option>
+                                <option value="fast">Ăn Nhanh</option>
+                                <option value="vegan">Ăn Chay</option>
+                                <option value="drinks">Đồ Uống</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-brightred uppercase tracking-wider mb-1">Bữa ăn trong ngày</label>
+                            <select id="form-dish-meal" class="w-full px-4 py-2.5 rounded-xl border border-brightred/20 text-sm focus:ring-2 focus:ring-coral outline-none bg-white">
+                                <option value="breakfast">Bữa Sáng</option>
+                                <option value="lunch">Bữa Trưa</option>
+                                <option value="dinner">Bữa Tối</option>
+                                <option value="snack">Ăn Vặt / Nhẹ</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-brightred uppercase tracking-wider mb-1">Quán mua / Địa điểm</label>
+                            <input type="text" id="form-dish-location" class="w-full px-4 py-2.5 rounded-xl border border-brightred/20 text-sm focus:ring-2 focus:ring-coral outline-none" placeholder="VD: Quán Cô Ba gầm cầu">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-brightred uppercase tracking-wider mb-1">Thẻ nhãn (cách nhau bởi dấu phẩy)</label>
+                            <input type="text" id="form-dish-tags" class="w-full px-4 py-2.5 rounded-xl border border-brightred/20 text-sm focus:ring-2 focus:ring-coral outline-none" placeholder="VD: cay nhẹ, bổ dưỡng, món nước">
+                        </div>
+
+                        <div class="sm:col-span-2">
+                            <label class="block text-xs font-bold text-brightred uppercase tracking-wider mb-1">Ghi chú cá nhân / Mô tả</label>
+                            <textarea id="form-dish-desc" rows="2" class="w-full px-4 py-2.5 rounded-xl border border-brightred/20 text-sm focus:ring-2 focus:ring-coral outline-none" placeholder="Ghi chú vị trí, giá tiền hoặc công thức nấu..."></textarea>
+                        </div>
+
+                        <div class="sm:col-span-2 flex items-center gap-2">
+                            <input type="checkbox" id="form-dish-fav" class="w-4 h-4 accent-brightred rounded">
+                            <label for="form-dish-fav" class="text-xs font-bold text-charcoal cursor-pointer">Đánh dấu là món yêu thích ngay</label>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-3 pt-3">
+                        <button type="submit" class="flex-1 py-3 bg-brightred hover:bg-red-600 text-white font-bold text-sm rounded-xl shadow-md transition-all">
+                            <i class="fa-solid fa-floppy-disk mr-1"></i> Lưu Món Ăn
+                        </button>
+                        <button type="button" onclick="resetDishForm()" class="px-5 py-3 bg-cream-dark text-charcoal font-bold text-sm rounded-xl hover:bg-gray-200">
+                            Làm mới
+                        </button>
+                    </div>
+                </form>
+
+                <!-- TAB 2: LIST OF DISHES -->
+                <div id="manage-list-view" class="hidden space-y-4">
+                    <div class="relative">
+                        <input type="text" id="manage-search" oninput="renderManageList()" placeholder="Tìm kiếm món trong danh sách..." class="w-full pl-9 pr-4 py-2 rounded-xl border border-brightred/20 text-xs outline-none focus:ring-2 focus:ring-coral">
+                        <i class="fa-solid fa-search absolute left-3 top-2.5 text-charcoal/40 text-xs"></i>
+                    </div>
+
+                    <div id="manage-dishes-container" class="space-y-2 max-h-80 overflow-y-auto pr-1">
+                        <!-- Rendered dynamically -->
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- FAVORITES MODAL -->
+    <div id="fav-modal" class="fixed inset-0 z-50 hidden bg-charcoal/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-xl rounded-3xl shadow-2xl border border-coral/20 overflow-hidden flex flex-col max-h-[85vh]">
+            <div class="bg-coral p-5 text-white flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-heart text-2xl text-butter"></i>
+                    <h3 class="font-extrabold text-lg">Danh Sách Món Yêu Thích</h3>
+                </div>
+                <button onclick="closeFavModal()" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div id="fav-dishes-list" class="p-6 overflow-y-auto space-y-3 flex-grow">
+                <!-- Rendered dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- HISTORY MODAL -->
+    <div id="history-modal" class="fixed inset-0 z-50 hidden bg-charcoal/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-xl rounded-3xl shadow-2xl border border-brightred/20 overflow-hidden flex flex-col max-h-[85vh]">
+            <div class="bg-brightred p-5 text-white flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-clock-rotate-left text-2xl text-butter"></i>
+                    <h3 class="font-extrabold text-lg">Lịch Sử Vòng Quay</h3>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="clearHistory()" class="text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg text-white font-bold">Xóa lịch sử</button>
+                    <button onclick="closeHistoryModal()" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="history-dishes-list" class="p-6 overflow-y-auto space-y-3 flex-grow">
+                <!-- Rendered dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- JAVASCRIPT APPLICATION LOGIC -->
+    <script>
+        /* ==========================================================================
+           1. INITIAL DEFAULT FOOD DATABASE (25+ ITEMS PER CATEGORY/MEAL COMBINATION)
+           ========================================================================== */
+        
+        function generateDefaultDatabase() {
+            const rawData = [
+                // HEALTHY - BREAKFAST
+                { cat: 'healthy', meal: 'breakfast', name: 'Yến mạch ngâm qua đêm trái cây', desc: 'Giàu chất xơ, bổ dưỡng và nhẹ bụng.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Bánh mì nguyên cám ốp la', desc: 'Protein sạch cùng tinh bột chuyển hóa chậm.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Smoothie xanh bina chuối', desc: 'Thanh lọc cơ thể, dồi dào vitamin.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Sữa chua hạt chia quả mọng', desc: ' Tốt cho tiêu hóa và làn da tươi trẻ.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Trứng cuộn rau củ nấm', desc: 'Giàu đạm và chất xơ tự nhiên.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Bánh mì ngũ cốc kẹp bơ', desc: 'Chất béo tốt từ quả bơ tươi.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Salad ức gà sốt chanh dây', desc: 'Ít calo, nhiều protein giúp săn chắc cơ.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Ngũ cốc nguyên hạt sữa tươi', desc: 'Nhanh gọn, tiện lợi khởi động năng lượng.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Cháo yến mạch thịt nạc', desc: 'Ấm bụng, thanh nhẹ dễ hấp thu.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Sữa chua Hy Lạp hạt óc chó', desc: 'Hàm lượng protein cao vượt trội.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Khoai lang luộc & trứng luộc', desc: 'Món ăn giản dị chuẩn eat-clean.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Pancake yến mạch mật ong', desc: 'Vị ngọt nhẹ tự nhiên thanh mát.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Pudding hạt chia dừa tươi', desc: 'Món điểm tâm thơm béo thanh đạm.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Sinh tố chuối yến mạch', desc: 'No lâu và giàu khoáng chất.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Salad đậu gà sốt mè', desc: 'Đạm thực vật lành tính.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Bánh cuốn rau củ hấp', desc: 'Nhẹ nhàng thanh nhẹ buổi sáng.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Cháo gạo lứt đậu đỏ', desc: 'Bổ máu và dễ tiêu hóa.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Cơm nắm gạo lứt mè đen', desc: 'Tiện lợi mang đi làm.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Súp bí đỏ kem hạnh nhân', desc: 'Thơm ngậy và giàu vitamin A.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Trứng xào cà chua nấm', desc: 'Đầy đủ dưỡng chất đơn giản.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Bánh mì đen mứt dâu ít đường', desc: 'Ngọt thanh nhẹ nhàng.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Salad táo dưa leo sốt sữa chua', desc: 'Giòn ngọt thanh mát.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Ức gà xé phay bắp cải', desc: 'Đã miệng không lo béo.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Nước ép cần tây dưa hấu', desc: 'Detox buổi sáng mượt mà.' },
+                { cat: 'healthy', meal: 'breakfast', name: 'Sữa đậu nành hạt óc chó', desc: 'Dưỡng chất lành mạnh.' },
+
+                // HEALTHY - LUNCH
+                { cat: 'healthy', meal: 'lunch', name: 'Cơm gạo lứt ức gà áp chảo', desc: 'Cân bằng macro hoàn hảo cho bữa trưa.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Salad cá ngừ đậu gà', desc: 'Omega-3 dồi dào từ cá biển.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Bún gạo lứt trộn thịt nạc', desc: 'Thanh mát và ngập tràn rau xanh.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Cơm cuộn rong biển gạo lứt', desc: 'Dễ ăn, hấp dẫn và sạch sẽ.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Cá hồi áp chảo măng tây', desc: 'Dinh dưỡng cao cấp khoẻ mạnh.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Thịt thăn luộc canh cải xanh', desc: 'Món ăn thanh đạm đậm vị.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Gà kho gừng cơm gạo lứt', desc: 'Đậm đà quen thuộc ít dầu mỡ.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Salad tôm bơ sốt chanh', desc: 'Tươi ngậy giòn ngọt ngào.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Miến gà nấm dưa leo', desc: 'Sợi miến dẻo ngon ít calo.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Đậu hũ sốt cà chua ít dầu', desc: 'Món ăn đạm đạm bình dị.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Bò áp chảo salad bắp cải', desc: 'Bổ sung sắt và cơ bắp.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Cơm Quinoa rau củ nướng', desc: 'Hạt siêu thực phẩm Quinoa.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Bún gà xé nước dùng trong', desc: 'Ấm lòng trưa bận rộn.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Salad khoai tây trứng luộc', desc: 'Nạp năng lượng tinh bột tốt.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Cá hấp gừng hành lá', desc: 'Ngọt thơm thanh tự nhiên.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Mì nguyên cám trộn tôm', desc: 'Thay thế mì tôm thông thường.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Cơm tôm hấp canh bí đỏ', desc: 'Bổ dưỡng cho thể chất.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Gỏi cuốn tôm thịt nạc', desc: 'Món cuốn Việt Nam trứ danh.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Cơm đậu hũ nấm đông cô', desc: 'Thanh đạm nhẹ nhàng.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Salad Quinoa đậu bắp', desc: 'Tốt cho đường ruột.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Súp gà rau củ nấm hương', desc: 'Nóng hổi thanh ngọt.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Cơm gà xé lá chanh gạo lứt', desc: 'Hương vị Việt chuẩn mực.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Cá thu nướng giấy bạc', desc: 'Giữ trọn dưỡng chất tự nhiên.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Bò lúc lắc rau củ ít mỡ', desc: 'Thơm đậm đà đưa cơm.' },
+                { cat: 'healthy', meal: 'lunch', name: 'Cháo yến mạch tôm bắp ngọt', desc: 'Thanh mát dễ ăn.' },
+
+                // HEALTHY - DINNER
+                { cat: 'healthy', meal: 'dinner', name: 'Canh sườn nấm rau củ nhẹ', desc: 'Thanh lọc buổi tối không nặng bụng.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Salad ức gà sốt mè rang', desc: 'Bữa tối nhẹ nhàng dễ ngủ.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Cá basa hấp bắp cải', desc: 'Mềm thơm dễ tiêu.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Cơm gạo lứt luộc rau củ', desc: 'Thanh đạm tuyệt đối.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Súp nấm hải sản nhẹ', desc: 'Nóng hổi ấm bụng.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Tôm nướng muối ớt salad', desc: 'Đã miệng mà không béo.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Đậu hũ hấp nấm kim針', desc: 'Ngọt tự nhiên thanh khiết.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Thịt heo luộc cuộn dưa leo', desc: 'Thanh mát dễ ăn.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Bún gạo lứt nước dùng rau', desc: 'Ấm bụng không tích mỡ.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Salad bơ dưa lưới tôm', desc: 'Món ngon tươi mát.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Cá hồi sốt chanh dây nhẹ', desc: 'Bổ dưỡng cho giấc ngủ sâu.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Canh bí đao thịt nạc', desc: 'Mát gan giải nhiệt.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Gà xé phay bắp cải răm', desc: 'Vị chua ngọt thanh nhẹ.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Măng tây xào tôm sú', desc: 'Sang trọng thanh lịch.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Cháo dưỡng sinh hạt sen', desc: 'Giúp an thần tĩnh tâm.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Khoai lang nướng salad rau', desc: 'Giàu xơ ngon miệng.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Cơm súp lơ trắng xào tôm', desc: 'Keto thay thế tinh bột.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Trứng hấp nấm linh chi', desc: 'Mềm mại thanh dịu.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Bò xào cần tây hành tây', desc: 'Giàu dưỡng chất sạch.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Salad rong biển trứng cút', desc: 'Đậm phong cách Nhật.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Miến xào măng tây chay', desc: 'Món nhẹ tối tròn vị.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Gỏi tôm ngó sen thanh nhẹ', desc: 'Đặc sản Việt nhẹ bụng.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Canh hến nấu hẹ dứa', desc: 'Thanh nhiệt mát bổ.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Cá quả nướng dừa', desc: 'Thơm dịu êm nhẹ.' },
+                { cat: 'healthy', meal: 'dinner', name: 'Súp ngô ngọt gà xé', desc: 'Ấm lòng tối se lạnh.' },
+
+                // HEALTHY - SNACK
+                { cat: 'healthy', meal: 'snack', name: 'Táo tươi chấm bơ đậu phụng', desc: 'Bữa phụ hoàn hảo tràn năng lượng.' },
+                { cat: 'healthy', meal: 'snack', name: 'Hạt hạnh nhân macca hỗn hợp', desc: 'Hạt dinh dưỡng sấy giòn.' },
+                { cat: 'healthy', meal: 'snack', name: 'Sữa chua dừa hạt chia', desc: 'Mát lạnh sảng khoái.' },
+                { cat: 'healthy', meal: 'snack', name: 'Sinh tố việt quất chuối', desc: 'Chống oxy hóa tuyệt vời.' },
+                { cat: 'healthy', meal: 'snack', name: 'Bánh ngói hạnh nhân ít đường', desc: 'Giòn thơm nhâm nhi.' },
+                { cat: 'healthy', meal: 'snack', name: 'Khoai lang sấy dẻo', desc: 'Món ăn vặt tự nhiên.' },
+                { cat: 'healthy', meal: 'snack', name: 'Nước dừa tươi tắc', desc: 'Điện giải bù nước sảng khoái.' },
+                { cat: 'healthy', meal: 'snack', name: 'Rong biển sấy giòn ăn liền', desc: 'Ít calo vui miệng.' },
+                { cat: 'healthy', meal: 'snack', name: 'Thanh năng lượng hạt granola', desc: 'Cứu đói cấp tốc chiều.' },
+                { cat: 'healthy', meal: 'snack', name: 'Bưởi da xanh tôm khô', desc: 'Vừa ngon vừa giảm mỡ.' },
+                { cat: 'healthy', meal: 'snack', name: 'Trái cây đĩa chấm muối ớt', desc: 'Ổi, xoài, dưa hấu tươi.' },
+                { cat: 'healthy', meal: 'snack', name: 'Đậu nành edamame luộc', desc: 'Đạm thực vật thuần túy.' },
+                { cat: 'healthy', meal: 'snack', name: 'Bánh Biscotti hạt dinh dưỡng', desc: 'Ăn vặt chuẩn Eat Clean.' },
+                { cat: 'healthy', meal: 'snack', name: 'Pudding mango dừa', desc: 'Ngọt thơm thanh mát.' },
+                { cat: 'healthy', meal: 'snack', name: 'Kem bơ nguyên chất dừa sấy', desc: 'Béo ngon lành mạnh.' },
+                { cat: 'healthy', meal: 'snack', name: 'Dưa leo chấm sốt hummus', desc: 'Phong cách Địa Trung Hải.' },
+                { cat: 'healthy', meal: 'snack', name: 'Trà hoa cúc mật ong nóng', desc: 'Thư giãn tinh thần.' },
+                { cat: 'healthy', meal: 'snack', name: 'Bánh đa kê hạt mè', desc: 'Món quà quê giòn tan.' },
+                { cat: 'healthy', meal: 'snack', name: 'Sinh tố bơ hạt dừa', desc: 'Ngậy thơm đã thèm.' },
+                { cat: 'healthy', meal: 'snack', name: 'Sữa hạt sen dừa tươi', desc: 'Bổ dưỡng êm dịu.' },
+                { cat: 'healthy', meal: 'snack', name: 'Táo sấy giòn không đường', desc: 'Nhâm nhi làm việc.' },
+                { cat: 'healthy', meal: 'snack', name: 'Cần tây chấm bơ bơ', desc: 'Giữ dáng săn chắc.' },
+                { cat: 'healthy', meal: 'snack', name: 'Nước ép cam cà rốt', desc: 'Sáng mắt đẹp da.' },
+                { cat: 'healthy', meal: 'snack', name: 'Sô cô la đen 85%', desc: 'Tốt cho tim mạch.' },
+                { cat: 'healthy', meal: 'snack', name: 'Bún tàu dưa leo gỏi', desc: 'Nhẹ bụng dễ chịu.' },
+
+                // HOME MEALS (CƠM NHÀ)
+                { cat: 'home', meal: 'breakfast', name: 'Phở bò gia truyền', desc: 'Nước dùng đậm đà hương vị quê hương.' },
+                { cat: 'home', meal: 'breakfast', name: 'Bún riêu cua đồng', desc: 'Vị chua thanh mát béo ngậy riêu cua.' },
+                { cat: 'home', meal: 'breakfast', name: 'Bánh mì thịt chả pate', desc: 'Món ăn quốc dân giòn rụm đậm đà.' },
+                { cat: 'home', meal: 'breakfast', name: 'Xôi xéo hành giao', desc: 'Mềm dẻo thơm nức mùi mỡ hành.' },
+                { cat: 'home', meal: 'breakfast', name: 'Bánh cuốn nóng nhân thịt', desc: 'Mềm mượt chấm nước mắm chua ngọt.' },
+                { cat: 'home', meal: 'breakfast', name: 'Bún chả Hà Nội', desc: 'Chả nướng thơm lừng than hồng.' },
+                { cat: 'home', meal: 'breakfast', name: 'Bánh giầy chả lụa', desc: 'Đơn giản đậm đà truyền thống.' },
+                { cat: 'home', meal: 'breakfast', name: 'Cháo sườn sụn quay', desc: 'Sóng sánh ấm áp buổi sáng.' },
+                { cat: 'home', meal: 'breakfast', name: 'Bún bò Huế giò heo', desc: 'Đậm đà vị mắm ruốc chả cua.' },
+                { cat: 'home', meal: 'breakfast', name: 'Bánh mì ốp la xíu mại', desc: 'Nóng hổi chấm sốt đậm đà.' },
+                { cat: 'home', meal: 'breakfast', name: 'Mì Quảng gà trứng cút', desc: 'Sợi mì vàng đậm đà xứ Quảng.' },
+                { cat: 'home', meal: 'breakfast', name: 'Bánh giầy nhân đậu xanh', desc: 'Mền dẻo thanh ngọt.' },
+                { cat: 'home', meal: 'breakfast', name: 'Hủ tiếu Nam Vang', desc: 'Nước lèo ngọt từ xương ống.' },
+                { cat: 'home', meal: 'breakfast', name: 'Xôi gà xé mỡ hành', desc: 'Bổ dưỡng căng tràn buổi sáng.' },
+                { cat: 'home', meal: 'breakfast', name: 'Bánh bèo chén dừa thịt', desc: 'Đặc sản đậm đà Miền Trung.' },
+                { cat: 'home', meal: 'breakfast', name: 'Cháo lòng nóng hổi', desc: 'Hương vị bình dị thân quen.' },
+                { cat: 'home', meal: 'breakfast', name: 'Bánh mì nướng bơ đường', desc: 'Thơm ngậy bơ sữa.' },
+                { cat: 'home', meal: 'breakfast', name: 'Miến lươn đồng nướng giòn', desc: 'Bổ dưỡng đậm chất quê.' },
+                { cat: 'home', meal: 'breakfast', name: 'Bánh giầy giò lụa hành phi', desc: 'Tiện lợi đưa miệng.' },
+                { cat: 'home', meal: 'breakfast', name: 'Bún ốc chuối đậu', desc: 'Vị chua ốc giòn sần sật.' },
+                { cat: 'home', meal: 'breakfast', name: 'Bánh chưng rán dưa góp', desc: 'Giòn ngon đậm vị Tết.' },
+                { cat: 'home', meal: 'breakfast', name: 'Cháo trai thì là nóng', desc: 'Giải cảm ấm bụng.' },
+                { cat: 'home', meal: 'breakfast', name: 'Bánh bao nhân thịt trứng cút', desc: 'Béo ngậy ấm áp.' },
+                { cat: 'home', meal: 'breakfast', name: 'Bún mọc sọc sườn', desc: 'Nước dùng trong ngọt thanh.' },
+                { cat: 'home', meal: 'breakfast', name: 'Bánh mì đập mắm nêm', desc: 'Dân dã cuốn hút.' },
+
+                { cat: 'home', meal: 'lunch', name: 'Cơm thịt kho tàu trứng cút', desc: 'Bữa cơm gia đình đậm đà chuẩn vị.' },
+                { cat: 'home', meal: 'lunch', name: 'Canh chua cá lóc rau đắng', desc: 'Chua ngọt đậm chất Nam Bộ.' },
+                { cat: 'home', meal: 'lunch', name: 'Cá bống kho tộ riềng', desc: 'Đưa cơm ngấu nghiến ngày mưa.' },
+                { cat: 'home', meal: 'lunch', name: 'Thịt luộc chấm mắm tôm dưa cà', desc: 'Món ăn chân quê đưa cơm tuyệt đỉnh.' },
+                { cat: 'home', meal: 'lunch', name: 'Rau muống xào tỏi giòn', desc: 'Món xào quốc dân đưa cơm.' },
+                { cat: 'home', meal: 'lunch', name: 'Sườn xào chua ngọt', desc: 'Đưa cơm từ người già đến trẻ nhỏ.' },
+                { cat: 'home', meal: 'lunch', name: 'Gà kho sả ớt đậm đà', desc: 'Cay nồng đưa cơm ngày mát trời.' },
+                { cat: 'home', meal: 'lunch', name: 'Canh cua mồng mồng dưa cà', desc: 'Mát lành đậm vị hè.' },
+                { cat: 'home', meal: 'lunch', name: 'Cơm cá thu sốt cà chua', desc: 'Cá biển đậm đà béo ngậy.' },
+                { cat: 'home', meal: 'lunch', name: 'Mực xào dưa leo cà chua', desc: 'Giòn sần sật ngọt tự nhiên.' },
+                { cat: 'home', meal: 'lunch', name: 'Bò xào thiên lý', desc: 'Bổ dưỡng và thơm thanh.' },
+                { cat: 'home', meal: 'lunch', name: 'Thịt kho mắm quẹt rau luộc', desc: 'Món ngon dân dã ăn bắt cơm.' },
+                { cat: 'home', meal: 'lunch', name: 'Canh sườn nấu chua dừa', desc: 'Chua dịu dễ nuốt.' },
+                { cat: 'home', meal: 'lunch', name: 'Cá diêu hồng chiên xù mắm me', desc: 'Giòn rụm mắm me đậm đà.' },
+                { cat: 'home', meal: 'lunch', name: 'Tôm rim mặn ngọt', desc: 'Vỏ giòn vị mặn ngọt vừa vặn.' },
+                { cat: 'home', meal: 'lunch', name: 'Trứng chiên thịt băm hành tây', desc: 'Đơn giản mà hao cơm.' },
+                { cat: 'home', meal: 'lunch', name: 'Canh bí đỏ nấu thịt băm', desc: 'Bổ dưỡng ngọt mát.' },
+                { cat: 'home', meal: 'lunch', name: 'Đậu hũ dồn thịt sốt cà', desc: 'Món cơm quen thuộc thơm phức.' },
+                { cat: 'home', meal: 'lunch', name: 'Cơm đùi gà chiên mắm', desc: 'Da giòn rụm sốt đậm đà.' },
+                { cat: 'home', meal: 'lunch', name: 'Canh khoai mỡ nấu tôm', desc: 'Tím lịm sánh dẻo ngọt tôm.' },
+                { cat: 'home', meal: 'lunch', name: 'Mắm kho quẹt khoai củ', desc: 'Đậm đà hương vị sông nước.' },
+                { cat: 'home', meal: 'lunch', name: 'Cá rô đồng kho nghệ', desc: 'Thơm lừng ấm bụng.' },
+                { cat: 'home', meal: 'lunch', name: 'Thịt băm xào dừa chua', desc: 'Béo chua lạ miệng.' },
+                { cat: 'home', meal: 'lunch', name: 'Canh khổ qua dồn thịt', desc: 'Giải nhiệt đắng hậu ngọt.' },
+                { cat: 'home', meal: 'lunch', name: 'Cơm chiên dương châu', desc: 'Đầy đặn nhiều sắc màu.' },
+
+                { cat: 'home', meal: 'dinner', name: 'Lẩu cá kèo lá giang', desc: 'Bữa tối sum vầy ấm cúng.' },
+                { cat: 'home', meal: 'dinner', name: 'Thịt nướng sả bún tươi', desc: 'Thơm nức mũi đậm đà.' },
+                { cat: 'home', meal: 'dinner', name: 'Cá lóc nướng trui mắm nêm', desc: 'Hương vị miền Tây dân dã.' },
+                { cat: 'home', meal: 'dinner', name: 'Canh gà nấu lá giang', desc: 'Chua ngọt ấm áp chiều tối.' },
+                { cat: 'home', meal: 'dinner', name: 'Cơm sườn nướng mỡ hành', desc: 'Đậm đà ngon miệng.' },
+                { cat: 'home', meal: 'dinner', name: 'Lẩu gà lá é', desc: 'Cay thơm nồng ấm bữa tối.' },
+                { cat: 'home', meal: 'dinner', name: 'Bánh xèo miền Tây giòn rụm', desc: 'Cuộn rau rừng chấm mắm.' },
+                { cat: 'home', meal: 'dinner', name: 'Mực nướng sa tế', desc: 'Cay nồng giòn ngon sần sật.' },
+                { cat: 'home', meal: 'dinner', name: 'Cơm bò lúc lắc khoai tây', desc: 'Thịt mềm mọng nước.' },
+                { cat: 'home', meal: 'dinner', name: 'Bạch luộc mắm tôm', desc: 'Giòn sần sật lai rai.' },
+                { cat: 'home', meal: 'dinner', name: 'Cháo cá lóc rau đắng', desc: 'Ấm lòng tối se lạnh.' },
+                { cat: 'home', meal: 'dinner', name: 'Canh mọc nấu nấm thả', desc: 'Thanh ngọt quý phái.' },
+                { cat: 'home', meal: 'dinner', name: 'Lẩu riêu cua sườn sụn', desc: 'Ngon ngất ngây bữa tối.' },
+                { cat: 'home', meal: 'dinner', name: 'Tôm hấp nước dừa', desc: 'Ngọt béo tự nhiên.' },
+                { cat: 'home', meal: 'dinner', name: 'Bốc bò ngâm mắm', desc: 'Đậm đà chua ngọt.' },
+                { cat: 'home', meal: 'dinner', name: 'Cá chép om dưa', desc: 'Nóng hổi chua dịu trôi cơm.' },
+                { cat: 'home', meal: 'dinner', name: 'Gà luộc lá chanh muối tiêu', desc: 'Truyền thống không thể thiếu.' },
+                { cat: 'home', meal: 'dinner', name: 'Cơm hấp lá sen', desc: 'Thơm dịu tinh tế.' },
+                { cat: 'home', meal: 'dinner', name: 'Sườn nướng tảng BBQ', desc: 'Đậm sốt bắt mắt.' },
+                { cat: 'home', meal: 'dinner', name: 'Ốc nhồi hấp sả lá chanh', desc: 'Thơm lừng ấm áp.' },
+                { cat: 'home', meal: 'dinner', name: 'Gỏi gà xé phay bắp cải', desc: 'Chua ngọt đỡ ngấy.' },
+                { cat: 'home', meal: 'dinner', name: 'Cơm cháy mỡ hành kho quẹt', desc: 'Giòn tan đậm đà.' },
+                { cat: 'home', meal: 'dinner', name: 'Chả cá Lăng Hà Nội', desc: 'Thơm lừng thì là mắm tôm.' },
+                { cat: 'home', meal: 'dinner', name: 'Cơm mắm cá lóc chiên', desc: 'Đặc sản đưa cơm.' },
+                { cat: 'home', meal: 'dinner', name: 'Bò nhúng dấm bún tươi', desc: 'Chua ngọt dễ ăn.' },
+
+                { cat: 'home', meal: 'snack', name: 'Bánh tráng trộn Sa Đéc', desc: 'Chua cay mặn ngọt chuẩn vị vặt.' },
+                { cat: 'home', meal: 'snack', name: 'Chè hạt sen bọc nhãn lồng', desc: 'Thanh mát quý phái.' },
+                { cat: 'home', meal: 'snack', name: 'Bánh tráng nướng Đà Lạt', desc: 'Pizza Việt Nam giòn rụm.' },
+                { cat: 'home', meal: 'snack', name: 'Xoài lắc muối ớt', desc: 'Chua cay nồng nàn.' },
+                { cat: 'home', meal: 'snack', name: 'Chè dừa dầm Hải Phòng', desc: 'Béo ngậy thơm dừa.' },
+                { cat: 'home', meal: 'snack', name: 'Bánh tráng cuộn bơ', desc: 'Béo ngậy đậm đà.' },
+                { cat: 'home', meal: 'snack', name: 'Ốc xào sa tế cay', desc: 'Nhâm nhi cùng bạn bè.' },
+                { cat: 'home', meal: 'snack', name: 'Bột chiên trứng dưa góp', desc: 'Giòn bên ngoài mềm bên trong.' },
+                { cat: 'home', meal: 'snack', name: 'Chè trôi nước cốt dừa', desc: 'Nóng hổi thơm mùi gừng.' },
+                { cat: 'home', meal: 'snack', name: 'Bánh đúc nóng thịt băm', desc: 'Ấm áp chiều mưa.' },
+                { cat: 'home', meal: 'snack', name: 'Cút lộn xào me', desc: 'Chua ngọt đậm đà.' },
+                { cat: 'home', meal: 'snack', name: 'Bánh gối nhân thịt vặt', desc: 'Giòn rụm chấm mắm.' },
+                { cat: 'home', meal: 'snack', name: 'Chè bưởi An Giang', desc: 'Giòn sần sật béo dừa.' },
+                { cat: 'home', meal: 'snack', name: 'Bánh khoai nướng nước cốt dừa', desc: 'Thơm béo bình dị.' },
+                { cat: 'home', meal: 'snack', name: 'Tào phớ đường mật hoa lài', desc: 'Mát mịn giải nhiệt.' },
+                { cat: 'home', meal: 'snack', name: 'Bánh tiêu nhân đậu xanh', desc: 'Thơm phồng giòn rụm.' },
+                { cat: 'home', meal: 'snack', name: 'Khoai lắc xí muội', desc: 'Chua ngọt mặn giòn.' },
+                { cat: 'home', meal: 'snack', name: 'Chè sương sa hạt lựu', desc: 'Đẹp mắt mát lạnh.' },
+                { cat: 'home', meal: 'snack', name: 'Bánh tai yến dừa', desc: 'Giòn viền mềm giữa.' },
+                { cat: 'home', meal: 'snack', name: 'Chuối nướng nếp cốt dừa', desc: 'Thơm ngậy hấp dẫn.' },
+                { cat: 'home', meal: 'snack', name: 'Chè khúc bạch hạnh nhân', desc: 'Thanh mát quý phái.' },
+                { cat: 'home', meal: 'snack', name: 'Bánh tráng bơ hành phi', desc: 'Ngon quên lối về.' },
+                { cat: 'home', meal: 'snack', name: 'Chè thái sầu riêng', desc: 'Đậm đà hương sầu.' },
+                { cat: 'home', meal: 'snack', name: 'Sữa chua nếp cẩm', desc: 'Dẻo ngon thơm phức.' },
+                { cat: 'home', meal: 'snack', name: 'Bánh cam lúc lắc', desc: 'Ngọt ngào quen thuộc.' }
+            ];
+
+            const fastItems = ['Bánh mì Kebab', 'Burger Bò Pho Mai', 'Pizza Hải Sản', 'Gà Rán Giòn Cay', 'Mì Ý Sốt Bò Băm', 'Tacos Mêxicô', 'Hotdog Phô Mai', 'Sandwich Ham Cheese', 'Kimbap Chiên Giòn', 'Tokbokki Sốt Cay', 'Gà Popcorn Chiên', 'Khoai Tây Chiên Lắc Phô Mai', 'Nacho Sốt Kem', 'Mì Tôm Trứng Bò', 'Bún Đậu Mắm Tôm Nhanh', 'Cơm Tấm Sườn Bì Trứng', 'Bánh Mì Que Hải Phòng', 'Mì Xào Hải Sản', 'Miến Xào Cua', 'Cơm Hộp Bento', 'Gà Sốt Đậu Hàn Quốc', 'Sandwich Tuna', 'Quesadilla Gà', 'Nui Xào Bò', 'Mì Udon Nhật Bún'];
+            
+            const veganItems = ['Phở Chay Nấm Hương', 'Bún Riêu Chay Đậu Hũ', 'Cơm Chay Sườn Lát', 'Gỏi Cuốn Chay Sốt Tương', 'Hủ Tiếu Chay Rau Củ', 'Mì Quảng Chay Đậu Đậu', 'Bánh Xèo Chay Nấm', 'Cơm Chiên Hạt Sen Chay', 'Lẩu Nấm Chay Thanh Đạm', 'Bánh Bao Chay Nhân Đậu', 'Bún Chả Chay', 'Cháo Nấm Hạt Sen', 'Đậu Hũ Chiên Sả Ớt Chay', 'Miến Trộn Chay Hàn Quốc', 'Bánh Mì Chay Pate Nấm', 'Salad Bơ Chay', 'Cơm Gạo Lứt Chay', 'Nấm Đùi Gà Sốt Bơ Chay', 'Canh Chua Chay Đậu Hũ', 'Bánh Cống Chay', 'Gỏi Nấm Tuyết Chay', 'Bún Đậu Chay Mắm Đậu', 'Curry Chay Khoai Củ', 'Súp Nấm Tuyết Chay', 'Bánh Cuốn Chay'];
+
+            const drinkItems = ['Cà Phê Sữa Đá', 'Bạc Xỉu Sài Gòn', 'Trà Đào Cam Sả', 'Trà Vải Lài', 'Trà Sữa Trân Châu Đường Đen', 'Nước Ép Cam Tươi', 'Sinh Tố Bơ', 'Sinh Tố Mãng Cầu', 'Trà Mãng Cầu', 'Trà Chanh Giã Tay', 'Cà Phê Muối', 'Cà Phê Trứng', 'Matcha Latte', 'Nước Ép Dưa Hấu', 'Nước Ép Cà Rốt Táo', 'Sinh Tố Dâu', 'Trà Oolong Vải', 'Trà Sữa Ô Long', 'Trà Hoa Cúc Mật Ong', 'Trà Tắc Xí Muội', 'Kombucha Dâu Tây', 'Sữa Hạt Óc Chó', 'Nước Dừa Tươi Tắc', 'Trà Mật Ong Lemon', 'Smoothie Mango-Coco'];
+
+            const meals = ['breakfast', 'lunch', 'dinner', 'snack'];
+
+            meals.forEach(m => {
+                fastItems.forEach((item) => {
+                    rawData.push({
+                        cat: 'fast',
+                        meal: m,
+                        name: `${item}`,
+                        desc: 'Nhanh chóng, siêu tiện lợi cho ngày bận rộn.'
+                    });
+                });
+            });
+
+            meals.forEach(m => {
+                veganItems.forEach((item) => {
+                    rawData.push({
+                        cat: 'vegan',
+                        meal: m,
+                        name: `${item}`,
+                        desc: 'Thanh đạm, thuần chay tự nhiên và tốt cho sức khỏe.'
+                    });
+                });
+            });
+
+            drinkItems.forEach(item => {
+                rawData.push({
+                    cat: 'drinks',
+                    meal: 'all',
+                    name: item,
+                    desc: 'Thức uống thơm ngon giải khát cho ngày dài.'
+                });
+            });
+
+            return rawData.map((d, index) => ({
+                id: 'dish_' + (index + 1),
+                name: d.name,
+                category: d.cat,
+                meal: d.meal,
+                description: d.desc,
+                tags: [d.cat, d.meal],
+                location: '',
+                note: '',
+                isFavorite: false
+            }));
+        }
+
+        /* ==========================================================================
+           2. GLOBAL STATE MANAGEMENT & COLOR PALETTE
+           ========================================================================== */
+        
+        const SLICE_COLORS = [
+            '#FF1744', '#2A9D8F', '#121212', '#F5C85B', 
+            '#E63946', '#10B981', '#1E1E1E', '#E76F51', 
+            '#FF4D6D', '#3A86EF', '#264653', '#F4A261'
+        ];
+
+        const state = {
+            currentCategory: 'healthy',
+            currentMeal: 'lunch',
+            dishes: [],
+            soundEnabled: true,
+            isSpinning: false,
+            currentResultDish: null,
+            spinHistory: [],
+            audioCtx: null,
+            wheelAngle: 0
+        };
+
+        function loadStoredData() {
+            try {
+                const storedDishes = localStorage.getItem('hnamg_dishes_v2');
+                if (storedDishes) {
+                    state.dishes = JSON.parse(storedDishes);
+                } else {
+                    state.dishes = generateDefaultDatabase();
+                    saveDishesToStorage();
+                }
+
+                const soundSetting = localStorage.getItem('hnamg_sound');
+                if (soundSetting !== null) {
+                    state.soundEnabled = JSON.parse(soundSetting);
+                }
+
+                const history = localStorage.getItem('hnamg_history');
+                if (history) {
+                    state.spinHistory = JSON.parse(history);
+                }
+            } catch (err) {
+                console.error("Storage error:", err);
+                state.dishes = generateDefaultDatabase();
+            }
+        }
+
+        function saveDishesToStorage() {
+            localStorage.setItem('hnamg_dishes_v2', JSON.stringify(state.dishes));
+            updateFavBadge();
+        }
+
+        function saveHistoryToStorage() {
+            localStorage.setItem('hnamg_history', JSON.stringify(state.spinHistory));
+        }
+
+        /* ==========================================================================
+           3. AUDIO SYNTHESIZER (WEB AUDIO API)
+           ========================================================================== */
+        
+        function initAudio() {
+            if (!state.soundEnabled) return;
+            try {
+                if (!state.audioCtx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (AudioContext) state.audioCtx = new AudioContext();
+                }
+                if (state.audioCtx && state.audioCtx.state === 'suspended') {
+                    state.audioCtx.resume();
+                }
+            } catch(e) {
+                console.warn("Audio Context blocked by browser policy (Zalo):", e);
+            }
+        }
+
+        function playTickSound() {
+            if (!state.soundEnabled) return;
+            initAudio();
+            if (!state.audioCtx || state.audioCtx.state !== 'running') return;
+
+            try {
+                const osc = state.audioCtx.createOscillator();
+                const gain = state.audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(440, state.audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(880, state.audioCtx.currentTime + 0.04);
+                
+                gain.gain.setValueAtTime(0.15, state.audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, state.audioCtx.currentTime + 0.04);
+                
+                osc.connect(gain);
+                gain.connect(state.audioCtx.destination);
+                osc.start();
+                osc.stop(state.audioCtx.currentTime + 0.04);
+            } catch (e) {}
+        }
+
+        function playWinSound() {
+            if (!state.soundEnabled) return;
+            initAudio();
+            if (!state.audioCtx || state.audioCtx.state !== 'running') return;
+
+            try {
+                const notes = [523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((freq, i) => {
+                    const osc = state.audioCtx.createOscillator();
+                    const gain = state.audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+                    
+                    gain.gain.setValueAtTime(0.2, state.audioCtx.currentTime + i * 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.001, state.audioCtx.currentTime + i * 0.1 + 0.3);
+                    
+                    osc.connect(gain);
+                    gain.connect(state.audioCtx.destination);
+                    osc.start(state.audioCtx.currentTime + i * 0.1);
+                    osc.stop(state.audioCtx.currentTime + i * 0.1 + 0.3);
+                });
+            } catch(e) {}
+        }
+
+        function toggleSound() {
+            state.soundEnabled = !state.soundEnabled;
+            localStorage.setItem('hnamg_sound', JSON.stringify(state.soundEnabled));
+            updateSoundIcon();
+            showToast(state.soundEnabled ? 'Đã BẬT âm thanh' : 'Đã TẮT âm thanh');
+        }
+
+        function updateSoundIcon() {
+            const icon = document.getElementById('sound-icon');
+            if (state.soundEnabled) {
+                icon.className = 'fa-solid fa-volume-high text-lg text-brightred';
+            } else {
+                icon.className = 'fa-solid fa-volume-xmark text-lg text-charcoal/40';
+            }
+        }
+
+        /* ==========================================================================
+           4. NAVIGATION & VIEWS SWITCHER
+           ========================================================================== */
+
+        function switchView(viewName) {
+            const views = ['home', 'meals', 'wheel', 'categories'];
+            views.forEach(v => {
+                const el = document.getElementById(`view-${v}`);
+                if (el) el.classList.add('hidden');
+            });
+
+            const activeEl = document.getElementById(`view-${viewName}`);
+            if (activeEl) {
+                activeEl.classList.remove('hidden');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+
+            if (viewName === 'wheel') {
+                setTimeout(() => {
+                    drawWheel();
+                    renderWheelListPreview();
+                }, 50);
+            }
+        }
+
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobile-menu');
+            menu.classList.toggle('hidden');
+        }
+
+        function selectCategory(cat) {
+            state.currentCategory = cat;
+            const catTitles = {
+                healthy: 'Ăn Healthy',
+                home: 'Ăn Cơm Nhà',
+                fast: 'Ăn Nhanh',
+                vegan: 'Ăn Chay',
+                drinks: 'Đồ Uống'
+            };
+
+            if (cat === 'drinks') {
+                state.currentMeal = 'all';
+                setupWheelHeader();
+                switchView('wheel');
+            } else {
+                document.getElementById('selected-cat-title').innerText = catTitles[cat] || 'Chọn Bữa Ăn';
+                switchView('meals');
+            }
+        }
+
+        function selectMeal(meal) {
+            state.currentMeal = meal;
+            setupWheelHeader();
+            switchView('wheel');
+        }
+
+        function goBackFromWheel() {
+            if (state.currentCategory === 'drinks') {
+                switchView('home');
+            } else {
+                switchView('meals');
+            }
+        }
+
+        function quickStartSpin() {
+            const categories = ['healthy', 'home', 'fast', 'vegan', 'drinks'];
+            const randomCat = categories[Math.floor(Math.random() * categories.length)];
+            state.currentCategory = randomCat;
+            if (randomCat === 'drinks') {
+                state.currentMeal = 'all';
+            } else {
+                const meals = ['breakfast', 'lunch', 'dinner', 'snack'];
+                state.currentMeal = meals[Math.floor(Math.random() * meals.length)];
+            }
+            setupWheelHeader();
+            switchView('wheel');
+            setTimeout(() => {
+                startWheelSpin();
+            }, 300);
+        }
+
+        function setupWheelHeader() {
+            const catNames = { healthy: 'Healthy', home: 'Cơm Nhà', fast: 'Ăn Nhanh', vegan: 'Ăn Chay', drinks: 'Đồ Uống' };
+            const mealNames = { breakfast: 'Bữa Sáng', lunch: 'Bữa Trưa', dinner: 'Bữa Tối', snack: 'Ăn Vặt', all: 'Tất Cả' };
+
+            document.getElementById('active-cat-badge').innerText = catNames[state.currentCategory] || state.currentCategory;
+            document.getElementById('active-meal-badge').innerText = mealNames[state.currentMeal] || state.currentMeal;
+
+            const titleText = state.currentCategory === 'drinks' 
+                ? 'Vòng Quay Đồ Uống Giải Khát'
+                : `Vòng Quay ${catNames[state.currentCategory]} - ${mealNames[state.currentMeal]}`;
+            
+            document.getElementById('wheel-title-text').innerText = titleText;
+        }
+
+        function getActiveDishes() {
+            return state.dishes.filter(d => {
+                if (state.currentCategory === 'drinks') return d.category === 'drinks';
+                return d.category === state.currentCategory && (d.meal === state.currentMeal || d.meal === 'all');
+            });
+        }
+
+        /* ==========================================================================
+           5. CANVAS LUCKY WHEEL ENGINE & DRAWING
+           ========================================================================== */
+
+        function drawWheel() {
+            const canvas = document.getElementById('wheel-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const dishes = getActiveDishes();
+
+            document.getElementById('wheel-dish-count').innerText = dishes.length;
+            document.getElementById('side-list-count').innerText = dishes.length + ' món';
+
+            const width = canvas.width;
+            const height = canvas.height;
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const radius = width / 2 - 10;
+
+            ctx.clearRect(0, 0, width, height);
+
+            if (dishes.length === 0) {
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+                ctx.fillStyle = '#F4F1EA';
+                ctx.fill();
+                ctx.fillStyle = '#121212';
+                ctx.font = 'bold 16px "Be Vietnam Pro"';
+                ctx.textAlign = 'center';
+                ctx.fillText('Chưa có món ăn trong mục này', centerX, centerY);
+                return;
+            }
+
+            const arcSize = (2 * Math.PI) / dishes.length;
+
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate(state.wheelAngle);
+
+            for (let i = 0; i < dishes.length; i++) {
+                const angle = i * arcSize;
+                
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.arc(0, 0, radius, angle, angle + arcSize);
+                ctx.fillStyle = SLICE_COLORS[i % SLICE_COLORS.length];
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#FFFFFF';
+                ctx.stroke();
+
+                ctx.save();
+                ctx.rotate(angle + arcSize / 2);
+                ctx.textAlign = 'right';
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = 'bold 13px "Be Vietnam Pro"';
+
+                let name = dishes[i].name;
+                if (name.length > 18) name = name.substring(0, 16) + '...';
+
+                ctx.fillText(name, radius - 25, 5);
+                ctx.restore();
+            }
+
+            ctx.restore();
+        }
+
+        function startWheelSpin() {
+            if (state.isSpinning) return;
+
+            initAudio();
+            const dishes = getActiveDishes();
+            if (dishes.length === 0) {
+                showToast('Danh sách chưa có món ăn để quay!', 'error');
+                return;
+            }
+
+            state.isSpinning = true;
+            document.getElementById('spin-btn').disabled = true;
+
+            const selectedIndex = Math.floor(Math.random() * dishes.length);
+            const winningDish = dishes[selectedIndex];
+
+            const sliceAngle = (2 * Math.PI) / dishes.length;
+            const targetSliceCenter = selectedIndex * sliceAngle + sliceAngle / 2;
+            let targetAngle = (1.5 * Math.PI) - targetSliceCenter;
+            
+            const extraRotations = (5 + Math.floor(Math.random() * 4)) * 2 * Math.PI;
+            targetAngle = targetAngle + extraRotations;
+            
+            const startAngle = state.wheelAngle % (2 * Math.PI);
+            const totalRotation = targetAngle - startAngle;
+
+            const duration = 4500;
+            const startTime = performance.now();
+            let lastTickSlice = -1;
+
+            function animate(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+
+                const easeOut = 1 - Math.pow(1 - progress, 3);
+                state.wheelAngle = startAngle + totalRotation * easeOut;
+
+                const currentRotationNorm = (state.wheelAngle % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+                const currentSliceIndex = Math.floor(currentRotationNorm / sliceAngle);
+                if (currentSliceIndex !== lastTickSlice) {
+                    playTickSound();
+                    lastTickSlice = currentSliceIndex;
+                }
+
+                drawWheel();
+
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    state.isSpinning = false;
+                    document.getElementById('spin-btn').disabled = false;
+                    
+                    playWinSound();
+                    if (typeof confetti === 'function') {
+                        confetti({
+                            particleCount: 100,
+                            spread: 70,
+                            origin: { y: 0.6 }
+                        });
+                    }
+                    
+                    logHistory(winningDish);
+                    showResultModal(winningDish);
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        function pickRandomDirectly() {
+            const dishes = getActiveDishes();
+            if (dishes.length === 0) return;
+            const winningDish = dishes[Math.floor(Math.random() * dishes.length)];
+            playWinSound();
+            logHistory(winningDish);
+            showResultModal(winningDish);
+        }
+
+        /* ==========================================================================
+           6. RESULT MODAL & IMAGE GENERATOR
+           ========================================================================== */
+
+        function getFoodImageQuery(dish) {
+            const name = dish.name.toLowerCase();
+            if (name.includes('phở')) return 'vietnamese,pho,noodle';
+            if (name.includes('bún')) return 'vietnamese,noodle,soup';
+            if (name.includes('bánh mì')) return 'banh,mi,sandwich';
+            if (name.includes('cơm')) return 'rice,asian,dish';
+            if (name.includes('salad') || name.includes('yến mạch')) return 'salad,healthy,food';
+            if (name.includes('trà') || name.includes('cà phê') || name.includes('sinh tố')) return 'beverage,coffee,tea';
+            if (name.includes('chay')) return 'vegan,vegetarian,food';
+            return 'vietnamese,food';
+        }
+
+        function showResultModal(dish) {
+            state.currentResultDish = dish;
+            
+            document.getElementById('result-dish-name').innerText = dish.name;
+            document.getElementById('result-dish-desc').innerText = dish.description || 'Món ăn hấp dẫn dành riêng cho bữa ăn của bạn hôm nay.';
+            
+            const imgQuery = getFoodImageQuery(dish);
+            const imgEl = document.getElementById('result-dish-image');
+            imgEl.src = `https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80`;
+
+            const tagsBox = document.getElementById('result-tags-container');
+            const catNames = { healthy: 'Healthy', home: 'Cơm Nhà', fast: 'Ăn Nhanh', vegan: 'Ăn Chay', drinks: 'Đồ Uống' };
+            const mealNames = { breakfast: 'Sáng', lunch: 'Trưa', dinner: 'Tối', snack: 'Ăn Vặt', all: 'Giải Khát' };
+            
+            tagsBox.innerHTML = `
+                <span class="px-2.5 py-1 rounded-lg bg-forest/15 text-forest text-xs font-bold">${catNames[dish.category] || dish.category}</span>
+                <span class="px-2.5 py-1 rounded-lg bg-brightred/15 text-brightred text-xs font-bold">${mealNames[dish.meal] || dish.meal}</span>
+            `;
+
+            document.getElementById('result-location-text').innerText = dish.location || 'Chưa có địa điểm (Nhấn chỉnh sửa để thêm)';
+            document.getElementById('result-note-text').innerText = dish.note || 'Chưa có ghi chú cá nhân';
+            
+            document.getElementById('result-notes-view').classList.remove('hidden');
+            document.getElementById('result-notes-edit').classList.add('hidden');
+
+            updateResultFavoriteBtn();
+
+            const modal = document.getElementById('result-modal');
+            const card = document.getElementById('result-card-box');
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                card.classList.remove('scale-95', 'opacity-0');
+                card.classList.add('scale-100', 'opacity-100');
+            }, 10);
+        }
+
+        function closeResultModal() {
+            const card = document.getElementById('result-card-box');
+            card.classList.remove('scale-100', 'opacity-100');
+            card.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                document.getElementById('result-modal').classList.add('hidden');
+            }, 200);
+        }
+
+        function handleImageError(img) {
+            img.onerror = null;
+            img.src = 'https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&w=600&q=80';
+        }
+
+        function toggleEditResultNotes() {
+            const view = document.getElementById('result-notes-view');
+            const edit = document.getElementById('result-notes-edit');
+            if (edit.classList.contains('hidden')) {
+                document.getElementById('edit-res-location').value = state.currentResultDish.location || '';
+                document.getElementById('edit-res-note').value = state.currentResultDish.note || '';
+                view.classList.add('hidden');
+                edit.classList.remove('hidden');
+            } else {
+                view.classList.remove('hidden');
+                edit.classList.add('hidden');
+            }
+        }
+
+        function saveResultNotes() {
+            if (!state.currentResultDish) return;
+            const loc = document.getElementById('edit-res-location').value.trim();
+            const note = document.getElementById('edit-res-note').value.trim();
+            
+            state.currentResultDish.location = loc;
+            state.currentResultDish.note = note;
+            
+            const idx = state.dishes.findIndex(d => d.id === state.currentResultDish.id);
+            if (idx !== -1) {
+                state.dishes[idx].location = loc;
+                state.dishes[idx].note = note;
+                saveDishesToStorage();
+            }
+
+            document.getElementById('result-location-text').innerText = loc || 'Chưa có địa điểm';
+            document.getElementById('result-note-text').innerText = note || 'Chưa có ghi chú cá nhân';
+            
+            document.getElementById('result-notes-edit').classList.add('hidden');
+            document.getElementById('result-notes-view').classList.remove('hidden');
+            showToast('Đã lưu ghi chú món ăn thành công!');
+        }
+
+        function toggleFavoriteCurrentResult() {
+            if (!state.currentResultDish) return;
+            state.currentResultDish.isFavorite = !state.currentResultDish.isFavorite;
+            
+            const idx = state.dishes.findIndex(d => d.id === state.currentResultDish.id);
+            if (idx !== -1) {
+                state.dishes[idx].isFavorite = state.currentResultDish.isFavorite;
+                saveDishesToStorage();
+            }
+
+            updateResultFavoriteBtn();
+            showToast(state.currentResultDish.isFavorite ? 'Đã thêm vào Món Yêu Thích ❤️' : 'Đã bỏ khỏi danh sách Yêu Thích');
+        }
+
+        function updateResultFavoriteBtn() {
+            const isFav = state.currentResultDish && state.currentResultDish.isFavorite;
+            const icon = document.getElementById('result-fav-icon');
+            const text = document.getElementById('result-fav-text');
+            if (isFav) {
+                icon.className = 'fa-solid fa-heart text-base text-brightred';
+                text.innerText = 'Đã Yêu Thích';
+            } else {
+                icon.className = 'fa-regular fa-heart text-base text-brightred';
+                text.innerText = 'Lưu Yêu Thích';
+            }
+        }
+
+        /* ==========================================================================
+           7. WHEEL SIDE LIST & PREVIEW
+           ========================================================================== */
+
+        function renderWheelListPreview() {
+            const dishes = getActiveDishes();
+            const container = document.getElementById('wheel-dishes-preview');
+            const searchVal = (document.getElementById('wheel-list-search')?.value || '').toLowerCase();
+            
+            const filtered = dishes.filter(d => d.name.toLowerCase().includes(searchVal));
+
+            if (filtered.length === 0) {
+                container.innerHTML = `<p class="text-xs text-charcoal/50 text-center py-4">Không tìm thấy món nào</p>`;
+                return;
+            }
+
+            container.innerHTML = filtered.map(d => `
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-cream-dark hover:bg-brightred/10 transition-colors border border-charcoal/5">
+                    <span class="text-xs font-bold text-charcoal truncate max-w-[200px]">${d.name}</span>
+                    <button onclick="toggleFavDishDirect('${d.id}')" class="text-xs text-brightred hover:scale-110 transition-transform">
+                        <i class="${d.isFavorite ? 'fa-solid' : 'fa-regular'} fa-heart"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function filterWheelListPreview() {
+            renderWheelListPreview();
+        }
+
+        function toggleFavDishDirect(id) {
+            const dish = state.dishes.find(d => d.id === id);
+            if (dish) {
+                dish.isFavorite = !dish.isFavorite;
+                saveDishesToStorage();
+                renderWheelListPreview();
+                showToast(dish.isFavorite ? 'Đã lưu yêu thích!' : 'Đã bỏ yêu thích!');
+            }
+        }
+
+        /* ==========================================================================
+           8. CRUD DISH MANAGEMENT MODAL
+           ========================================================================== */
+
+        function openManageDishesModal() {
+            document.getElementById('manage-modal').classList.remove('hidden');
+            switchManageTab('list');
+        }
+
+        function closeManageModal() {
+            document.getElementById('manage-modal').classList.add('hidden');
+            drawWheel();
+            renderWheelListPreview();
+        }
+
+        function switchManageTab(tab) {
+            const btnAdd = document.getElementById('tab-btn-add');
+            const btnList = document.getElementById('tab-btn-list');
+            const formView = document.getElementById('dish-form');
+            const listView = document.getElementById('manage-list-view');
+
+            if (tab === 'add') {
+                btnAdd.className = 'px-4 py-2.5 rounded-t-xl font-bold text-xs bg-white text-brightred border-t border-x border-brightred/10';
+                btnList.className = 'px-4 py-2.5 rounded-t-xl font-bold text-xs text-charcoal/70 hover:text-brightred';
+                formView.classList.remove('hidden');
+                listView.classList.add('hidden');
+            } else {
+                btnList.className = 'px-4 py-2.5 rounded-t-xl font-bold text-xs bg-white text-brightred border-t border-x border-brightred/10';
+                btnAdd.className = 'px-4 py-2.5 rounded-t-xl font-bold text-xs text-charcoal/70 hover:text-brightred';
+                listView.classList.remove('hidden');
+                formView.classList.add('hidden');
+                renderManageList();
+            }
+        }
+
+        function handleDishFormSubmit(e) {
+            e.preventDefault();
+            const editId = document.getElementById('form-dish-id').value;
+            const name = document.getElementById('form-dish-name').value.trim();
+            const category = document.getElementById('form-dish-category').value;
+            const meal = document.getElementById('form-dish-meal').value;
+            const location = document.getElementById('form-dish-location').value.trim();
+            const tags = document.getElementById('form-dish-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+            const desc = document.getElementById('form-dish-desc').value.trim();
+            const isFav = document.getElementById('form-dish-fav').checked;
+
+            if (editId) {
+                const idx = state.dishes.findIndex(d => d.id === editId);
+                if (idx !== -1) {
+                    state.dishes[idx] = {
+                        ...state.dishes[idx],
+                        name, category, meal, location, description: desc, tags, isFavorite: isFav
+                    };
+                    showToast('Đã cập nhật món ăn!');
+                }
+            } else {
+                const newDish = {
+                    id: 'dish_' + Date.now(),
+                    name, category, meal, location, description: desc || 'Món ăn tự thêm', tags, isFavorite: isFav
+                };
+                state.dishes.unshift(newDish);
+                showToast('Đã thêm món mới vào vòng quay!');
+            }
+
+            saveDishesToStorage();
+            resetDishForm();
+            switchManageTab('list');
+        }
+
+        function editDish(id) {
+            const dish = state.dishes.find(d => d.id === id);
+            if (!dish) return;
+
+            document.getElementById('form-dish-id').value = dish.id;
+            document.getElementById('form-dish-name').value = dish.name;
+            document.getElementById('form-dish-category').value = dish.category;
+            document.getElementById('form-dish-meal').value = dish.meal;
+            document.getElementById('form-dish-location').value = dish.location || '';
+            document.getElementById('form-dish-tags').value = (dish.tags || []).join(', ');
+            document.getElementById('form-dish-desc').value = dish.description || '';
+            document.getElementById('form-dish-fav').checked = !!dish.isFavorite;
+
+            switchManageTab('add');
+        }
+
+        function deleteDish(id) {
+            state.dishes = state.dishes.filter(d => d.id !== id);
+            saveDishesToStorage();
+            renderManageList();
+            showToast('Đã xóa món khỏi hệ thống.');
+        }
+
+        function resetDishForm() {
+            document.getElementById('form-dish-id').value = '';
+            document.getElementById('dish-form').reset();
+        }
+
+        function renderManageList() {
+            const container = document.getElementById('manage-dishes-container');
+            const searchVal = (document.getElementById('manage-search')?.value || '').toLowerCase();
+            document.getElementById('manage-total-count').innerText = state.dishes.length;
+
+            const filtered = state.dishes.filter(d => d.name.toLowerCase().includes(searchVal));
+
+            if (filtered.length === 0) {
+                container.innerHTML = `<p class="text-xs text-charcoal/50 text-center py-6">Không tìm thấy món ăn nào.</p>`;
+                return;
+            }
+
+            container.innerHTML = filtered.map(d => `
+                <div class="flex items-center justify-between p-3 rounded-2xl bg-cream-dark border border-charcoal/10">
+                    <div>
+                        <h5 class="text-xs font-bold text-charcoal">${d.name}</h5>
+                        <p class="text-[10px] text-charcoal/60 mt-0.5">${d.category} - ${d.meal} ${d.location ? '• 📍 ' + d.location : ''}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="editDish('${d.id}')" class="w-7 h-7 rounded-lg bg-forest/20 text-forest flex items-center justify-center text-xs">
+                            <i class="fa-solid fa-pen"></i>
+                        </button>
+                        <button onclick="deleteDish('${d.id}')" class="w-7 h-7 rounded-lg bg-brightred/20 text-brightred flex items-center justify-center text-xs">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        /* ==========================================================================
+           9. FAVORITES MODAL
+           ========================================================================== */
+
+        function openFavoritesModal() {
+            const modal = document.getElementById('fav-modal');
+            const container = document.getElementById('fav-dishes-list');
+            const favorites = state.dishes.filter(d => d.isFavorite);
+
+            if (favorites.length === 0) {
+                container.innerHTML = `<p class="text-xs text-charcoal/50 text-center py-8">Chưa có món nào được đánh dấu yêu thích.</p>`;
+            } else {
+                container.innerHTML = favorites.map(d => `
+                    <div class="flex items-center justify-between p-3.5 rounded-2xl bg-cream-dark border border-brightred/20">
+                        <div>
+                            <h4 class="text-sm font-bold text-charcoal">${d.name}</h4>
+                            <p class="text-xs text-charcoal/60">${d.description || 'Không có mô tả'}</p>
+                        </div>
+                        <button onclick="toggleFavDishDirect('${d.id}'); openFavoritesModal();" class="text-brightred text-base">
+                            <i class="fa-solid fa-heart"></i>
+                        </button>
+                    </div>
+                `).join('');
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        function closeFavModal() {
+            document.getElementById('fav-modal').classList.add('hidden');
+        }
+
+        function updateFavBadge() {
+            const count = state.dishes.filter(d => d.isFavorite).length;
+            document.getElementById('fav-count-badge').innerText = count;
+        }
+
+        /* ==========================================================================
+           10. HISTORY LOGGING & MODAL
+           ========================================================================== */
+
+        function logHistory(dish) {
+            state.spinHistory.unshift({
+                dishName: dish.name,
+                category: dish.category,
+                meal: dish.meal,
+                time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+            });
+            if (state.spinHistory.length > 20) state.spinHistory.pop();
+            saveHistoryToStorage();
+        }
+
+        function openHistoryModal() {
+            const modal = document.getElementById('history-modal');
+            const container = document.getElementById('history-dishes-list');
+
+            if (state.spinHistory.length === 0) {
+                container.innerHTML = `<p class="text-xs text-charcoal/50 text-center py-8">Chưa có lịch sử quay món ăn.</p>`;
+            } else {
+                container.innerHTML = state.spinHistory.map(h => `
+                    <div class="flex items-center justify-between p-3 rounded-xl bg-cream-dark border border-charcoal/10">
+                        <div>
+                            <h5 class="text-xs font-bold text-charcoal">${h.dishName}</h5>
+                            <span class="text-[10px] text-charcoal/60">${h.category} - ${h.meal}</span>
+                        </div>
+                        <span class="text-[11px] font-bold text-brightred">${h.time}</span>
+                    </div>
+                `).join('');
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        function closeHistoryModal() {
+            document.getElementById('history-modal').classList.add('hidden');
+        }
+
+        function clearHistory() {
+            state.spinHistory = [];
+            saveHistoryToStorage();
+            openHistoryModal();
+            showToast('Đã xóa lịch sử!');
+        }
+
+        /* ==========================================================================
+           11. TOAST NOTIFICATION SYSTEM
+           ========================================================================== */
+
+        function showToast(msg, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const bgColor = type === 'error' ? 'bg-brightred' : 'bg-charcoal';
+            
+            toast.className = `${bgColor} text-white px-4 py-3 rounded-2xl shadow-xl text-xs font-bold flex items-center gap-2 transition-all transform translate-y-5 opacity-0 pointer-events-auto border border-white/20`;
+            toast.innerHTML = `
+                <i class="fa-solid ${type === 'error' ? 'fa-triangle-exclamation text-butter' : 'fa-circle-check text-emerald'}"></i>
+                <span>${msg}</span>
+            `;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-5', 'opacity-0');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        /* ==========================================================================
+           12. APPLICATION INITIALIZATION
+           ========================================================================== */
+
+        window.onload = function() {
+            loadStoredData();
+            updateSoundIcon();
+            updateFavBadge();
+            
+            // Show Zalo guidance banner if opened inside Zalo app
+            if (window.isZaloBrowser) {
+                const banner = document.getElementById('zalo-banner');
+                if (banner) banner.classList.remove('hidden');
+            }
+
+            // Ensure Canvas Wheel renders properly after layout stabilization
+            setTimeout(() => {
+                drawWheel();
+            }, 100);
+        };
+
+        window.onresize = function() {
+            drawWheel();
+        };
+
+    </script>
+</body>
+</html>
